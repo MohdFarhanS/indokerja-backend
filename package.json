@@ -6,6 +6,9 @@
     "postinstall": "prisma generate",
     "build": "prisma generate && tsc",
     "dev": "ts-node-dev --respawn src/server.local.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint src api",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
     "test": "jest"
