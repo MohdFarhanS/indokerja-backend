@@ -1,8 +1,22 @@
 import { NextFunction, Request, Response } from 'express';
 import { z } from 'zod';
+import { emptyApplicationBodySchema } from '../modules/applications/application.schema';
 import { validateBody, validateParams } from './validateRequest';
 
 describe('validateBody', () => {
+  it('normalizes an undefined Apply body through the Apply-specific schema', () => {
+    const request = { body: undefined } as Request;
+    const response = { status: jest.fn(), json: jest.fn() };
+    response.status.mockReturnValue(response);
+    const next: NextFunction = jest.fn();
+
+    validateBody(emptyApplicationBodySchema)(request, response as unknown as Response, next);
+
+    expect(request.body).toEqual({});
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(response.status).not.toHaveBeenCalled();
+  });
+
   it('returns documented field errors at the top level', () => {
     const request = { body: { email: 'invalid' } } as Request;
     const response = { status: jest.fn(), json: jest.fn() };
