@@ -8,3 +8,88 @@ datasource db {
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
+
+enum UserRole {
+  JOB_SEEKER
+  COMPANY
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+}
+
+enum ApplicationStatus {
+  APPLIED
+  REVIEWING
+  SHORTLISTED
+  REJECTED
+  ACCEPTED
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  name         String
+  email        String        @unique
+  passwordHash String
+  role         UserRole
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  company      Company?
+  applications Application[] @relation("JobSeekerApplications")
+}
+
+model Company {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @db.Uuid
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  jobs        Job[]
+}
+
+model Job {
+  id           String        @id @default(uuid()) @db.Uuid
+  companyId    String        @db.Uuid
+  title        String
+  location     String
+  salary       Int
+  jobType      JobType
+  description  String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  applications Application[]
+
+  @@index([companyId])
+}
+
+model Application {
+  id            String                     @id @default(uuid()) @db.Uuid
+  jobId         String                     @db.Uuid
+  jobSeekerId   String                     @db.Uuid
+  status        ApplicationStatus          @default(APPLIED)
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+  job           Job                        @relation(fields: [jobId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  jobSeeker     User                       @relation("JobSeekerApplications", fields: [jobSeekerId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  statusHistory ApplicationStatusHistory[]
+
+  @@unique([jobId, jobSeekerId])
+  @@index([jobSeekerId])
+  @@index([status])
+}
+
+model ApplicationStatusHistory {
+  id            String            @id @default(uuid()) @db.Uuid
+  applicationId String            @db.Uuid
+  status        ApplicationStatus
+  createdAt     DateTime          @default(now())
+  application   Application       @relation(fields: [applicationId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([applicationId])
+}
