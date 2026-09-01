@@ -7,6 +7,7 @@ import { authRateLimiter } from './middlewares/authRateLimiter';
 import { errorHandler } from './middlewares/errorHandler';
 import { notFoundHandler } from './middlewares/notFoundHandler';
 import { authRoutes } from './modules/auth/auth.routes';
+import { companyJobRoutes, jobRoutes } from './modules/jobs/job.routes';
 
 const app = express();
 
@@ -24,9 +25,9 @@ app.get('/api/health', (_req, res) => {
 
 app.use(['/api/auth/login', '/api/auth/register'], authRateLimiter);
 app.use('/api/auth', authRoutes);
+app.use('/api/jobs', jobRoutes);
+app.use('/api/company/jobs', companyJobRoutes);
 
-// route module lain akan di-mount di sini pada Bagian 4
-// app.use('/api/jobs', jobsRoutes);
 // app.use('/api/applications', applicationsRoutes);
 // app.use('/api/companies', companiesRoutes);
 
