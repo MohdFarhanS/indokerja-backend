@@ -112,15 +112,23 @@ export async function updateApplicationStatus(
       throw new AppError(400, 'Application already has this status');
     }
 
-    const updatedApplication = await transaction.application.update({
-      where: { id: application.id },
+    const updateResult = await transaction.application.updateMany({
+      where: { id: application.id, status: application.status },
       data: { status: input.status },
-      select: createdApplicationSelect,
     });
+
+    if (updateResult.count !== 1) {
+      throw new AppError(409, 'Application status changed. Please refresh and try again.');
+    }
 
     await transaction.applicationStatusHistory.create({
       data: { applicationId: application.id, status: input.status },
       select: { id: true },
+    });
+
+    const updatedApplication = await transaction.application.findUniqueOrThrow({
+      where: { id: application.id },
+      select: createdApplicationSelect,
     });
 
     return updatedApplication;
