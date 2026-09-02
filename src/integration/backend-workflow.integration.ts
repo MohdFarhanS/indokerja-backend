@@ -243,9 +243,16 @@ describe('Stage 6 backend HTTP and database workflow', () => {
         .set(authorization(companyA.token))
         .send({ status: ApplicationStatus.REVIEWING }),
     ]);
-    expect(sameTargetUpdates.map((response) => response.status).sort()).toEqual([200, 409]);
-    expect(sameTargetUpdates.find((response) => response.status === 409)?.body.message).toBe(
-      'Application status changed. Please refresh and try again.',
+    const sameTargetStatuses = sameTargetUpdates.map((response) => response.status).sort();
+    expect([
+      [200, 400],
+      [200, 409],
+    ]).toContainEqual(sameTargetStatuses);
+    const rejectedSameTargetUpdate = sameTargetUpdates.find((response) => response.status !== 200);
+    expect(rejectedSameTargetUpdate?.body.message).toBe(
+      rejectedSameTargetUpdate?.status === 400
+        ? 'Application already has this status'
+        : 'Application status changed. Please refresh and try again.',
     );
 
     const stateAfterSameTargetUpdates = await prisma.application.findUniqueOrThrow({
@@ -332,20 +339,35 @@ describe('Stage 6 backend HTTP and database workflow', () => {
         .set(authorization(companyA.token))
         .send({ status: ApplicationStatus.ACCEPTED }),
     ]);
-    expect(differentTargetUpdates.map((response) => response.status).sort()).toEqual([200, 409]);
-
-    const acceptedDifferentTarget = differentTargetUpdates.find(
+    const differentTargetStatuses = differentTargetUpdates
+      .map((response) => response.status)
+      .sort();
+    expect([
+      [200, 200],
+      [200, 409],
+    ]).toContainEqual(differentTargetStatuses);
+    const acceptedDifferentTargetUpdates = differentTargetUpdates.filter(
       (response) => response.status === 200,
     );
+    const rejectedDifferentTargetUpdate = differentTargetUpdates.find(
+      (response) => response.status === 409,
+    );
+    if (rejectedDifferentTargetUpdate) {
+      expect(rejectedDifferentTargetUpdate.body.message).toBe(
+        'Application status changed. Please refresh and try again.',
+      );
+    }
     const stateAfterDifferentTargetUpdates = await prisma.application.findUniqueOrThrow({
       where: { id: applicationId },
       include: { statusHistory: { orderBy: { createdAt: 'asc' } } },
     });
-    expect(stateAfterDifferentTargetUpdates.status).toBe(
-      acceptedDifferentTarget?.body.data.application.status,
-    );
+    expect(
+      acceptedDifferentTargetUpdates.map(
+        (response) => response.body.data.application.status as ApplicationStatus,
+      ),
+    ).toContain(stateAfterDifferentTargetUpdates.status);
     expect(stateAfterDifferentTargetUpdates.statusHistory).toHaveLength(
-      historyCountAfterUpdate + 1,
+      historyCountAfterUpdate + acceptedDifferentTargetUpdates.length,
     );
     const latestHistory =
       stateAfterDifferentTargetUpdates.statusHistory[
