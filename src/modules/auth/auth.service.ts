@@ -13,6 +13,8 @@ const safeUserSelect = {
   role: true,
 } satisfies Prisma.UserSelect;
 
+const dummyPasswordHash = '$2b$12$UCALPYWahhUgnx1pVThEuO2qea4IZ9mjwLunQicBA2GdyQ9XRfWPG';
+
 export async function register(input: RegisterInput) {
   const existingUser = await prisma.user.findUnique({ where: { email: input.email } });
   if (existingUser) throw new AppError(409, 'Email is already registered');
@@ -63,7 +65,10 @@ export async function register(input: RegisterInput) {
 
 export async function login(input: LoginInput) {
   const user = await prisma.user.findUnique({ where: { email: input.email } });
-  const passwordMatches = user ? await bcrypt.compare(input.password, user.passwordHash) : false;
+  const passwordMatches = await bcrypt.compare(
+    input.password,
+    user?.passwordHash ?? dummyPasswordHash,
+  );
 
   if (!user || !passwordMatches) {
     throw new AppError(401, 'Invalid email or password');

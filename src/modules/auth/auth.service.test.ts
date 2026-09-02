@@ -136,6 +136,9 @@ describe('auth service', () => {
       statusCode: 401,
       message: 'Invalid email or password',
     });
+    expect(compareMock).toHaveBeenCalledTimes(2);
+    expect(compareMock.mock.calls[0][1]).toMatch(/^\$2[aby]\$12\$/);
+    expect(compareMock).toHaveBeenNthCalledWith(2, 'Wrong123!', 'bcrypt-hash');
   });
 
   it('returns a token and safe user for valid credentials', async () => {

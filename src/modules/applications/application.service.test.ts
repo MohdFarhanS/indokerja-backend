@@ -30,7 +30,8 @@ function transactionClient() {
     application: {
       create: jest.fn(),
       findUnique: jest.fn(),
-      update: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      updateMany: jest.fn(),
     },
     applicationStatusHistory: { create: jest.fn() },
   };
@@ -138,7 +139,8 @@ describe('application service', () => {
       status: ApplicationStatus.APPLIED,
       job: { company: { userId } },
     });
-    tx.application.update.mockResolvedValue(updated);
+    tx.application.updateMany.mockResolvedValue({ count: 1 });
+    tx.application.findUniqueOrThrow.mockResolvedValue(updated);
     tx.applicationStatusHistory.create.mockResolvedValue({ id: 'history-id' });
     transactionMock.mockImplementation((callback) => callback(tx));
 
@@ -153,13 +155,37 @@ describe('application service', () => {
         job: { select: { company: { select: { userId: true } } } },
       },
     });
-    expect(tx.application.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { status: ApplicationStatus.REVIEWING } }),
-    );
+    expect(tx.application.updateMany).toHaveBeenCalledWith({
+      where: { id: applicationId, status: ApplicationStatus.APPLIED },
+      data: { status: ApplicationStatus.REVIEWING },
+    });
     expect(tx.applicationStatusHistory.create).toHaveBeenCalledWith({
       data: { applicationId, status: ApplicationStatus.REVIEWING },
       select: { id: true },
     });
+    expect(tx.application.findUniqueOrThrow).toHaveBeenCalledWith({
+      where: { id: applicationId },
+      select: { id: true, jobId: true, status: true, createdAt: true },
+    });
+  });
+
+  it('rejects a concurrent status conflict without creating history', async () => {
+    const tx = transactionClient();
+    tx.application.findUnique.mockResolvedValue({
+      id: applicationId,
+      status: ApplicationStatus.APPLIED,
+      job: { company: { userId } },
+    });
+    tx.application.updateMany.mockResolvedValue({ count: 0 });
+    transactionMock.mockImplementation((callback) => callback(tx));
+
+    await expect(
+      updateApplicationStatus(userId, applicationId, { status: ApplicationStatus.REVIEWING }),
+    ).rejects.toEqual(
+      new AppError(409, 'Application status changed. Please refresh and try again.'),
+    );
+    expect(tx.applicationStatusHistory.create).not.toHaveBeenCalled();
+    expect(tx.application.findUniqueOrThrow).not.toHaveBeenCalled();
   });
 
   it('rejects same status without an update or history row', async () => {
@@ -174,7 +200,7 @@ describe('application service', () => {
     await expect(
       updateApplicationStatus(userId, applicationId, { status: ApplicationStatus.APPLIED }),
     ).rejects.toEqual(new AppError(400, 'Application already has this status'));
-    expect(tx.application.update).not.toHaveBeenCalled();
+    expect(tx.application.updateMany).not.toHaveBeenCalled();
     expect(tx.applicationStatusHistory.create).not.toHaveBeenCalled();
   });
 
@@ -193,7 +219,7 @@ describe('application service', () => {
     await expect(
       updateApplicationStatus(userId, applicationId, { status: ApplicationStatus.ACCEPTED }),
     ).rejects.toEqual(new AppError(403, 'Forbidden'));
-    expect(tx.application.update).not.toHaveBeenCalled();
+    expect(tx.application.updateMany).not.toHaveBeenCalled();
     expect(tx.applicationStatusHistory.create).not.toHaveBeenCalled();
   });
 });

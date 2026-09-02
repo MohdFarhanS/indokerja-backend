@@ -233,12 +233,31 @@ describe('Stage 6 backend HTTP and database workflow', () => {
       .send({ status: ApplicationStatus.REVIEWING });
     expect(seekerCannotUpdate.status).toBe(403);
 
-    const updated = await request(app)
-      .patch(`/api/applications/${applicationId}/status`)
-      .set(authorization(companyA.token))
-      .send({ status: ApplicationStatus.REVIEWING });
-    expect(updated.status).toBe(200);
-    expect(updated.body.data.application.status).toBe(ApplicationStatus.REVIEWING);
+    const sameTargetUpdates = await Promise.all([
+      request(app)
+        .patch(`/api/applications/${applicationId}/status`)
+        .set(authorization(companyA.token))
+        .send({ status: ApplicationStatus.REVIEWING }),
+      request(app)
+        .patch(`/api/applications/${applicationId}/status`)
+        .set(authorization(companyA.token))
+        .send({ status: ApplicationStatus.REVIEWING }),
+    ]);
+    expect(sameTargetUpdates.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(sameTargetUpdates.find((response) => response.status === 409)?.body.message).toBe(
+      'Application status changed. Please refresh and try again.',
+    );
+
+    const stateAfterSameTargetUpdates = await prisma.application.findUniqueOrThrow({
+      where: { id: applicationId },
+      include: { statusHistory: true },
+    });
+    expect(stateAfterSameTargetUpdates.status).toBe(ApplicationStatus.REVIEWING);
+    expect(
+      stateAfterSameTargetUpdates.statusHistory.filter(
+        (entry) => entry.status === ApplicationStatus.REVIEWING,
+      ),
+    ).toHaveLength(1);
 
     const refreshed = await request(app)
       .get('/api/applications/me')
@@ -302,5 +321,36 @@ describe('Stage 6 backend HTTP and database workflow', () => {
       ApplicationStatus.REVIEWING,
     ]);
     expect(finalDatabaseState.statusHistory).toHaveLength(historyCountAfterUpdate);
+
+    const differentTargetUpdates = await Promise.all([
+      request(app)
+        .patch(`/api/applications/${applicationId}/status`)
+        .set(authorization(companyA.token))
+        .send({ status: ApplicationStatus.SHORTLISTED }),
+      request(app)
+        .patch(`/api/applications/${applicationId}/status`)
+        .set(authorization(companyA.token))
+        .send({ status: ApplicationStatus.ACCEPTED }),
+    ]);
+    expect(differentTargetUpdates.map((response) => response.status).sort()).toEqual([200, 409]);
+
+    const acceptedDifferentTarget = differentTargetUpdates.find(
+      (response) => response.status === 200,
+    );
+    const stateAfterDifferentTargetUpdates = await prisma.application.findUniqueOrThrow({
+      where: { id: applicationId },
+      include: { statusHistory: { orderBy: { createdAt: 'asc' } } },
+    });
+    expect(stateAfterDifferentTargetUpdates.status).toBe(
+      acceptedDifferentTarget?.body.data.application.status,
+    );
+    expect(stateAfterDifferentTargetUpdates.statusHistory).toHaveLength(
+      historyCountAfterUpdate + 1,
+    );
+    const latestHistory =
+      stateAfterDifferentTargetUpdates.statusHistory[
+        stateAfterDifferentTargetUpdates.statusHistory.length - 1
+      ];
+    expect(latestHistory.status).toBe(stateAfterDifferentTargetUpdates.status);
   });
 });

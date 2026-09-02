@@ -30,7 +30,6 @@ app.use('/api/jobs', jobRoutes);
 app.use('/api/jobs', jobApplicationRoutes);
 app.use('/api/company/jobs', companyJobRoutes);
 app.use('/api/applications', applicationRoutes);
-// app.use('/api/companies', companiesRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
