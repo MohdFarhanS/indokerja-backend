@@ -653,6 +653,12 @@ Use bcrypt.
 
 Requirements:
 
+- validate new registration passwords for a minimum of 12 characters
+- reject new registration passwords exceeding 72 UTF-8 bytes
+- require at least one uppercase ASCII letter, lowercase ASCII letter, digit,
+  and non-alphanumeric, non-whitespace symbol for registration
+- preserve password whitespace without trimming or normalization
+- apply strength rules to registration only, not login of existing accounts
 - hash before database insert
 - never store plain-text passwords
 - never return password hashes
