@@ -167,17 +167,22 @@ cp .env.example .env
 Kemudian sesuaikan nilai `.env` untuk lingkungan lokal. File `.env` berisi credential dan **tidak
 boleh di-commit**.
 
-| Variable         | Wajib | Keterangan                                                                           | Contoh aman                                     |
-| ---------------- | ----- | ------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| `NODE_ENV`       | Tidak | `development`, `production`, atau `test`; default `development`                      | `development`                                   |
-| `PORT`           | Tidak | Port server lokal, integer `1`–`65535`; default `4000`                               | `4000`                                          |
-| `DATABASE_URL`   | Ya    | PostgreSQL connection URL yang digunakan aplikasi                                    | `postgresql://USER:PASSWORD@HOST:PORT/DATABASE` |
-| `DIRECT_URL`     | Ya    | Direct PostgreSQL URL untuk operasi migration                                        | `postgresql://USER:PASSWORD@HOST:PORT/DATABASE` |
-| `JWT_SECRET`     | Ya    | Secret JWT minimal 32 byte UTF-8                                                     | `ganti-dengan-random-secret-minimal-32-byte`    |
-| `JWT_EXPIRES_IN` | Tidak | Durasi positif JWT dengan unit `ms`, `s`, `m`, `h`, `d`, `w`, atau `y`; default `1d` | `1d`                                            |
-| `CORS_ORIGIN`    | Ya    | Origin frontend yang diizinkan, harus diisi persis                                   | `http://localhost:5173`                         |
+| Variable         | Wajib | Keterangan                                                                           | Contoh aman                                  |
+| ---------------- | ----- | ------------------------------------------------------------------------------------ | -------------------------------------------- |
+| `NODE_ENV`       | Tidak | `development`, `production`, atau `test`; default `development`                      | `development`                                |
+| `PORT`           | Tidak | Port server lokal, integer `1`–`65535`; default `4000`                               | `4000`                                       |
+| `DATABASE_URL`   | Ya    | Pooled PostgreSQL connection URL untuk runtime aplikasi                              | `<NEON_POOLED_CONNECTION_URI>`               |
+| `DIRECT_URL`     | Ya    | Direct PostgreSQL connection URL untuk operasi migration                             | `<NEON_DIRECT_CONNECTION_URI>`               |
+| `JWT_SECRET`     | Ya    | Secret JWT minimal 32 byte UTF-8                                                     | `ganti-dengan-random-secret-minimal-32-byte` |
+| `JWT_EXPIRES_IN` | Tidak | Durasi positif JWT dengan unit `ms`, `s`, `m`, `h`, `d`, `w`, atau `y`; default `1d` | `1d`                                         |
+| `CORS_ORIGIN`    | Ya    | Exact frontend origin yang diizinkan                                                 | `https://indokerja-frontend-psi.vercel.app`  |
 
 Contoh `.env.example` menggunakan placeholder dan bukan credential aktif.
+
+Pada production, `DATABASE_URL` menggunakan pooled connection dari Neon untuk runtime aplikasi,
+sedangkan `DIRECT_URL` menggunakan direct connection dari Neon untuk operasi Prisma migration.
+Parameter SSL yang diberikan Neon harus tetap menjadi bagian dari masing-masing connection URI.
+Jangan menaruh URI, credential, atau secret production di README maupun repository.
 
 ## Menyiapkan Database
 
@@ -195,9 +200,12 @@ Contoh `.env.example` menggunakan placeholder dan bukan credential aktif.
    ```
 
    Script tersebut menjalankan `prisma migrate deploy` dan cocok untuk menerapkan existing
-   migrations tanpa membuat migration baru. Saat mengembangkan perubahan schema secara lokal,
-   `npx prisma migrate dev` digunakan untuk membuat dan menerapkan migration baru; jangan gunakan
-   `prisma db push` sebagai pengganti migration yang menjadi source of truth.
+   migrations yang sudah di-commit tanpa membuat migration baru. Perintah ekuivalennya adalah
+   `npx prisma migrate deploy`.
+
+> Untuk production, jangan gunakan `prisma migrate dev`, `prisma migrate reset`, atau
+> `prisma db push`. Production harus menerapkan migration yang sudah di-commit melalui
+> `npm run prisma:migrate`.
 
 ### Seed Database
 
@@ -210,9 +218,10 @@ npx prisma db seed
 Seed membuat satu Job Seeker, dua Company, tiga lowongan, dua lamaran, dan status history terkait.
 Data ini hanya untuk pengembangan/demo, bukan production.
 
-> **Peringatan:** Jangan menjalankan seed ini pada database production. Seeder membuat akun demo
-> dengan kredensial yang diketahui publik dan hanya ditujukan untuk pengembangan, pengujian,
-> atau demonstrasi lokal.
+> **Peringatan:** Jangan menjalankan development/demo seed ini pada database production. Seeder
+> membuat akun demo dengan kredensial yang diketahui publik dan hanya ditujukan untuk pengembangan,
+> pengujian, atau demonstrasi lokal. Data verifikasi production dibuat melalui alur aplikasi/API
+> normal, bukan melalui seed ini.
 
 | Role         | Email                             | Password demo |
 | ------------ | --------------------------------- | ------------- |
@@ -242,7 +251,7 @@ Repository tidak mendefinisikan script `start`. Entry point deployment saat ini 
 ### Health Check
 
 ```http
-GET /api/health
+GET https://indokerja-backend.vercel.app/api/health
 ```
 
 Endpoint ini public dan mengembalikan respons seperti:
@@ -250,7 +259,7 @@ Endpoint ini public dan mengembalikan respons seperti:
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-09-02T00:00:00.000Z"
+  "timestamp": "<ISO-8601 timestamp>"
 }
 ```
 
@@ -500,11 +509,47 @@ dengan environment-nya. Repository frontend terkait:
 
 ## Deployment
 
-Repository ini sudah disiapkan untuk deployment serverless melalui `api/index.ts` dan
-`vercel.json`. Namun deployment production, konfigurasi environment production, domain,
-CORS production, serta verifikasi runtime production belum dilakukan pada tahap ini.
+Production API: <https://indokerja-backend.vercel.app>
 
-Panduan dan URL production akan diperbarui setelah Stage 12 selesai dan terverifikasi.
+Health endpoint: <https://indokerja-backend.vercel.app/api/health>
+
+- Hosting: Vercel Functions
+- Database: Neon PostgreSQL
+- ORM: Prisma 6.19.3
+
+Frontend dan backend dijalankan sebagai dua project Vercel yang terpisah. Arsitektur production:
+
+```text
+Client
+  ↓
+Vercel Frontend
+  ↓
+HTTPS REST API
+  ↓
+Vercel Backend Function
+  ↓
+Prisma
+  ↓
+Neon PostgreSQL
+```
+
+`api/index.ts` menjadi Vercel serverless entry. `src/app.ts` mengonfigurasi aplikasi Express tanpa
+memanggil `app.listen()`, sementara `src/server.local.ts` hanya menyediakan listener untuk
+development lokal. Konfigurasi `trust proxy = 1` menyesuaikan aplikasi dengan topologi reverse
+proxy Vercel dan mendukung IP-based rate limiting pada endpoint autentikasi.
+
+Environment production menggunakan variable `NODE_ENV`, `DATABASE_URL`, `DIRECT_URL`,
+`JWT_SECRET`, `JWT_EXPIRES_IN`, dan `CORS_ORIGIN`. Nilainya dikelola melalui environment project,
+bukan disimpan di repository. `CORS_ORIGIN` harus sama persis dengan origin frontend production:
+`https://indokerja-frontend-psi.vercel.app`; wildcard CORS tidak digunakan.
+
+## Verifikasi Production
+
+Deployment production telah diverifikasi secara manual melalui workflow utama kedua role. Area yang
+diverifikasi mencakup authentication, role routing dan protection, job creation, job listing/detail,
+application flow termasuk penolakan duplikat, candidate status update dan sinkronisasi status,
+session restoration, CORS, SPA deep-link refresh, serta persistensi data di Neon. Verifikasi ini
+bukan klaim bahwa automated production E2E test telah dijalankan.
 
 ## Workflow Pengembangan
 
