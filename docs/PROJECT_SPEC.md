@@ -239,6 +239,20 @@ Role:
 
 The backend must validate registration data before creating the account.
 
+Registration passwords for both roles must:
+
+- contain at least 12 characters
+- contain no more than 72 UTF-8 bytes
+- contain at least one uppercase ASCII letter (`A-Z`)
+- contain at least one lowercase ASCII letter (`a-z`)
+- contain at least one digit (`0-9`)
+- contain at least one non-alphanumeric, non-whitespace symbol
+
+Passwords are opaque credentials and must not be trimmed or otherwise
+normalized. Whitespace is preserved as part of a password, but does not
+satisfy the symbol requirement. This strength policy applies only when
+registering a new account; login must continue to accept existing credentials.
+
 Passwords must be hashed before being stored.
 
 ---
