@@ -78,11 +78,12 @@ export async function listMyApplications(userId: string) {
 }
 
 export async function listJobApplications(userId: string, jobId: string) {
-  const ownedJob = await prisma.job.findFirst({
-    where: { id: jobId, company: { userId } },
-    select: { id: true },
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { company: { select: { userId: true } } },
   });
-  if (!ownedJob) throw new AppError(404, 'Job not found');
+  if (!job) throw new AppError(404, 'Job not found');
+  if (job.company.userId !== userId) throw new AppError(403, 'Forbidden');
 
   return prisma.application.findMany({
     where: { jobId },
@@ -97,11 +98,16 @@ export async function updateApplicationStatus(
   input: UpdateApplicationStatusInput,
 ) {
   return prisma.$transaction(async (transaction) => {
-    const application = await transaction.application.findFirst({
-      where: { id: applicationId, job: { company: { userId } } },
-      select: { id: true, status: true },
+    const application = await transaction.application.findUnique({
+      where: { id: applicationId },
+      select: {
+        id: true,
+        status: true,
+        job: { select: { company: { select: { userId: true } } } },
+      },
     });
     if (!application) throw new AppError(404, 'Application not found');
+    if (application.job.company.userId !== userId) throw new AppError(403, 'Forbidden');
     if (application.status === input.status) {
       throw new AppError(400, 'Application already has this status');
     }
